@@ -7,9 +7,20 @@ import { BubbleList, Think, type BubbleItemType } from '@antdv-next/x';
 import { XMarkdown } from "@antdv-next/x-markdown";
 import { DeepSeekChatProvider, useXChat, XRequest, type XModelMessage, type XModelParams, } from "@antdv-next/x-sdk";
 
+import { findSystemPrompt, promptOptions } from './composables/useSystemPrompts'
+import CodeBlock from './components/CodeBlock.vue'
+import PrePassthrough from './components/PrePassthrough.vue'
+
 const configProps = useShadcnTheme()
 
+const markdownComponents = {
+  code: CodeBlock,
+  pre: PrePassthrough,
+}
+
 const senderRef = useTemplateRef('senderRef')
+
+const activePromptKey = ref<string | undefined>(undefined)
 
 interface ToolCall {
   id?: string
@@ -322,19 +333,20 @@ const handleConfirmSelectTime = () => {
 }
 
 const handleSubmit = (val: string) => {
-  onRequest({
-    "model": "xopqwen36v35b",
-    "messages": [
-      {
-        "role": "user",
-        "content": val
-      }
-    ],
-    "stream": true,
-    "tools": [selectTimeTool],
-    "tool_choice": "auto"
-  })
+  const messages: ChatMessage[] = []
+  const activePrompt = findSystemPrompt(activePromptKey.value)
+  if (activePrompt) {
+    messages.push({ role: 'system', content: activePrompt.content })
+  }
+  messages.push({ role: 'user', content: val })
 
+  onRequest({
+    model: 'xopqwen36v35b',
+    messages,
+    stream: true,
+    tools: [selectTimeTool],
+    tool_choice: 'auto',
+  })
 
   senderRef.value?.clear()
 }
@@ -369,11 +381,11 @@ const handleTestToolCall = () => {
       <template #contentRender="{ content, item }">
 
         <think title="deep thinking" v-if="item.thinkContent" blink>
-          <XMarkdown :content="item.thinkContent" />
+          <XMarkdown :content="item.thinkContent" :components="markdownComponents" />
         </think>
 
         <a-flex v-if="item.thinkDone || !item.thinkContent" vertical gap="small">
-          <XMarkdown :content="content" />
+          <XMarkdown :content="content" :components="markdownComponents" />
           <a-flex v-if="item.toolCalls?.length" vertical gap="small">
             <a-alert v-for="toolCall in item.toolCalls" :key="toolCall.id || toolCall.function.name" type="info"
               show-icon>
@@ -396,7 +408,17 @@ const handleTestToolCall = () => {
 
     </bubble-list>
     <div>
-      <a-flex justify="end" style="margin-bottom: 8px">
+      <a-flex justify="space-between" align="center" style="margin-bottom: 8px">
+        <a-space align="center">
+          <a-typography-text type="secondary">系统提示词</a-typography-text>
+          <a-select
+            v-model:value="activePromptKey"
+            style="width: 220px"
+            placeholder="不使用系统提示词"
+            allow-clear
+            :options="promptOptions"
+          />
+        </a-space>
         <a-button @click="handleTestToolCall">测试 tools 调用</a-button>
       </a-flex>
       <ax-sender ref="senderRef" :auto-size="{ minRows: 3, maxRows: 6 }" @submit="handleSubmit">
